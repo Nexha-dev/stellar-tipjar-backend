@@ -1,0 +1,72 @@
+use axum::{Router, http::Method};
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod controllers;
+mod db;
+mod models;
+mod routes;
+mod services;
+
+use db::connection::AppState;
+use services::stellar_service::StellarService;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "stellar_tipjar_backend=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+
+    let stellar_rpc_url = std::env::var("STELLAR_RPC_URL")
+        .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string());
+
+    let stellar_network = std::env::var("STELLAR_NETWORK")
+        .unwrap_or_else(|_| "testnet".to_string());
+
+    let pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&database_url)
+        .await?;
+
+    sqlx::migrate!("./migrations").run(&pool).await?;
+
+    let stellar = StellarService::new(stellar_rpc_url, stellar_network);
+
+    let state = Arc::new(AppState {
+        db: pool,
+        stellar,
+    });
+
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_origin(Any)
+        .allow_headers(Any);
+
+    let app = Router::new()
+        .merge(routes::creators::router())
+        .merge(routes::tips::router())
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Server listening on {}", addr);
+
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}

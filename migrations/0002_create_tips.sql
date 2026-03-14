@@ -1,0 +1,9 @@
+CREATE TABLE tips (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    creator_username TEXT NOT NULL REFERENCES creators(username) ON DELETE CASCADE,
+    amount TEXT NOT NULL,
+    transaction_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_tips_creator_username ON tips(creator_username);
