@@ -1,11 +1,12 @@
 use redis::aio::ConnectionManager;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 use crate::services::stellar_service::StellarService;
+use super::performance::PerformanceMonitor;
 
 pub struct AppState {
     pub db: PgPool,
     pub stellar: StellarService,
-    /// None when Redis is unavailable — controllers fall back to DB directly.
-    pub redis: Option<ConnectionManager>,
+    pub performance: Arc<PerformanceMonitor>,
 }

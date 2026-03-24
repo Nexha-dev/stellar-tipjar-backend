@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let stellar = StellarService::new(stellar_rpc_url, stellar_network);
+    let performance = Arc::new(db::performance::PerformanceMonitor::new());
 
     // Redis is optional — app starts fine without it, caching is simply skipped.
     let redis_url = std::env::var("REDIS_URL")
@@ -64,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         db: pool,
         stellar,
-        redis,
+        performance,
     });
 
     let cors = CorsLayer::new()
