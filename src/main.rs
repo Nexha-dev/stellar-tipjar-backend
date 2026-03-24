@@ -41,17 +41,23 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "testnet".to_string());
 
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(20)
+        .min_connections(5)
+        .acquire_timeout(Duration::from_secs(3))
+        .idle_timeout(Duration::from_secs(600))
+        .max_lifetime(Duration::from_secs(1800))
         .connect(&database_url)
         .await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let stellar = StellarService::new(stellar_rpc_url, stellar_network);
+    let performance = Arc::new(db::performance::PerformanceMonitor::new());
 
     let state = Arc::new(AppState {
         db: pool,
         stellar,
+        performance,
     });
 
     let cors = config::cors::cors_layer_from_env();
@@ -61,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
             .url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(routes::creators::router())
         .merge(routes::tips::router())
+        .merge(routes::health::router())
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
