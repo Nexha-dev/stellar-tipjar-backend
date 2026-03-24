@@ -12,6 +12,7 @@ mod controllers;
 mod db;
 mod docs;
 mod models;
+mod middleware;
 mod routes;
 mod services;
 
@@ -72,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::health::router())
         .layer(cors)
         .layer(TraceLayer::new_for_http())
+        .layer(middleware::rate_limiter::build_rate_limiter())
         .with_state(state);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
@@ -80,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Server listening on {}", addr);
     tracing::info!("Swagger UI available at http://{}/swagger-ui", addr);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 
     Ok(())
 }
