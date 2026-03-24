@@ -8,6 +8,7 @@ pub struct Creator {
     pub id: Uuid,
     pub username: String,
     pub wallet_address: String,
+    pub password_hash: String,
     pub created_at: DateTime<Utc>,
 }
 

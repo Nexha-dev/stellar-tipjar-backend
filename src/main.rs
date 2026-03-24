@@ -1,4 +1,4 @@
-use axum::{Router, http::Method};
+use axum::{middleware, Router, http::Method};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +12,7 @@ mod controllers;
 mod db;
 mod docs;
 mod models;
+mod middleware;
 mod routes;
 mod services;
 
@@ -66,12 +67,18 @@ async fn main() -> anyhow::Result<()> {
         .allow_origin(Any)
         .allow_headers(Any);
 
+    // Protected routes require a valid JWT.
+    let protected = Router::new()
+        .merge(routes::tips::router())
+        .route_layer(middleware::from_fn(middleware::auth::require_auth));
+
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui")
             .url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(routes::auth::router())
         .merge(routes::creators::router())
-        .merge(routes::tips::router())
         .merge(routes::health::router())
+        .merge(protected)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
