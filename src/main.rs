@@ -15,6 +15,7 @@ mod docs;
 mod middleware;
 mod models;
 mod routes;
+mod webhooks;
 mod search;
 mod services;
 mod shutdown;

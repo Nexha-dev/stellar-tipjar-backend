@@ -28,6 +28,13 @@ pub async fn record_tip(state: &AppState, req: RecordTipRequest) -> Result<Tip> 
         let _ = redis_client::del(&mut conn, &[tips_key.as_str()]).await;
     }
 
+    // Notify external services via webhook.
+    crate::webhooks::trigger_webhooks(
+        state.db.clone(), 
+        "tip.recorded", 
+        serde_json::to_value(&tip).unwrap()
+    ).await;
+
     Ok(tip)
 }
 

@@ -34,6 +34,13 @@ pub async fn create_creator(state: &AppState, req: CreateCreatorRequest) -> Resu
         let _ = redis_client::set(&mut conn, &keys::creator(&creator.username), &creator, redis_client::TTL_CREATOR).await;
     }
 
+    // Notify external services via webhook.
+    crate::webhooks::trigger_webhooks(
+        state.db.clone(), 
+        "creator.created", 
+        serde_json::to_value(&creator).unwrap()
+    ).await;
+
     Ok(creator)
 }
 
