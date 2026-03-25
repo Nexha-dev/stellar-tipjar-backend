@@ -24,6 +24,9 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-governor = { version = "0.4", features = ["axum"] }
+governor = "0.6"
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 reqwest = { version = "0.12", features = ["json"] }
 thiserror = "1"
 anyhow = "1"
@@ -33,3 +36,4 @@ utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
 [dev-dependencies]
 axum-test = "15"
 tokio = { version = "1", features = ["full"] }
+tower = "0.4"

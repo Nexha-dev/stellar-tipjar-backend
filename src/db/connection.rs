@@ -1,3 +1,4 @@
+use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 use std::sync::Arc;
 
