@@ -14,15 +14,16 @@ mod db;
 mod docs;
 mod middleware;
 mod models;
-mod middleware;
 mod routes;
 mod search;
 mod services;
 mod shutdown;
+mod ws;
 
 use db::connection::AppState;
 use docs::ApiDoc;
 use services::stellar_service::StellarService;
+use tokio::sync::broadcast;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -59,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
 
     let stellar = StellarService::new(stellar_rpc_url, stellar_network);
     let performance = Arc::new(db::performance::PerformanceMonitor::new());
+    let (broadcast_tx, _) = broadcast::channel(ws::CHANNEL_CAPACITY);
 
     // Redis is optional — app starts fine without it, caching is simply skipped.
     let redis_url = std::env::var("REDIS_URL")
@@ -69,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         db: pool,
         stellar,
         performance,
+        broadcast_tx,
     });
 
     let cors = CorsLayer::new()
@@ -95,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(general_limiter);
 
     let app = Router::new()
+        .route("/ws", axum::routing::get(ws::ws_handler))
         .merge(SwaggerUi::new("/swagger-ui")
             .url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(write_routes)

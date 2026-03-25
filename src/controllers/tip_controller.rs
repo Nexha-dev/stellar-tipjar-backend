@@ -33,6 +33,15 @@ pub async fn record_tip(state: &AppState, req: RecordTipRequest) -> Result<Tip> 
         redis_client::del(&mut conn, &[tips_key.as_str()]).await;
     }
 
+    // Broadcast the new tip to all connected WebSocket subscribers.
+    let event = crate::ws::TipEvent {
+        creator_id: tip.creator_username.clone(),
+        tipper_id: req.transaction_hash.clone(),
+        amount: tip.amount.parse::<u64>().unwrap_or(0),
+        timestamp: tip.created_at.timestamp(),
+    };
+    crate::ws::broadcast_tip(&state.broadcast_tx, event).await;
+
     Ok(tip)
 }
 
