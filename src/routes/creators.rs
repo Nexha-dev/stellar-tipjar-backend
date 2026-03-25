@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -11,6 +11,7 @@ use crate::controllers::creator_controller;
 use crate::controllers::tip_controller;
 use crate::db::connection::AppState;
 use crate::models::creator::{CreateCreatorRequest, CreatorResponse};
+use crate::models::pagination::PaginationParams;
 use crate::models::tip::TipResponse;
 use crate::validation::ValidatedJson;
 
@@ -91,27 +92,37 @@ pub async fn get_creator(
     }
 }
 
-/// List all tips for a creator
+/// List tips for a creator with pagination
 #[utoipa::path(
     get,
     path = "/creators/{username}/tips",
     tag = "creators",
     params(
-        ("username" = String, Path, description = "Creator's unique username")
+        ("username" = String, Path, description = "Creator's unique username"),
+        PaginationParams,
     ),
     responses(
-        (status = 200, description = "List of tips", body = Vec<TipResponse>),
+        (status = 200, description = "Paginated list of tips"),
         (status = 500, description = "Internal server error")
     )
 )]
 pub async fn get_creator_tips(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
+    Query(params): Query<PaginationParams>,
 ) -> impl IntoResponse {
-    match tip_controller::get_tips_for_creator(&state, &username).await {
-        Ok(tips) => {
-            let response: Vec<TipResponse> = tips.into_iter().map(Into::into).collect();
-            (StatusCode::OK, Json(serde_json::json!(response))).into_response()
+    match tip_controller::get_tips_paginated(&state, &username, params).await {
+        Ok(page) => {
+            let response = serde_json::json!({
+                "data": page.data.into_iter().map(TipResponse::from).collect::<Vec<_>>(),
+                "total": page.total,
+                "page": page.page,
+                "limit": page.limit,
+                "total_pages": page.total_pages,
+                "has_next": page.has_next,
+                "has_prev": page.has_prev,
+            });
+            (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
             tracing::error!("Failed to get tips: {}", e);
