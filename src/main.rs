@@ -9,16 +9,17 @@ mod db;
 mod docs;
 mod middleware;
 mod models;
-mod middleware;
 mod routes;
 mod webhooks;
 mod search;
 mod services;
 mod shutdown;
+mod ws;
 
 use db::connection::AppState;
 use docs::ApiDoc;
 use services::stellar_service::StellarService;
+use tokio::sync::broadcast;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -57,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     
     // PerformanceMonitor tracks query execution times and system health metrics.
     let performance = Arc::new(db::performance::PerformanceMonitor::new());
+    let (broadcast_tx, _) = broadcast::channel(ws::CHANNEL_CAPACITY);
 
     // Redis provides an optional high-speed caching layer for high-traffic endpoints.
     let redis_url = std::env::var("REDIS_URL")
@@ -139,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
     let x_request_id = axum::http::HeaderName::from_static("x-request-id");
 
     let app = Router::new()
+        .route("/ws", axum::routing::get(ws::ws_handler))
         .merge(SwaggerUi::new("/swagger-ui")
             .url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(v1)
