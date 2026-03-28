@@ -22,14 +22,14 @@ pub mod validation;
 pub mod webhooks;
 pub mod ws;
 
-use axum::{Router, http::Method};
+use axum::{http::Method, Router};
+use db::connection::AppState;
+use docs::ApiDoc;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use docs::ApiDoc;
-use db::connection::AppState;
 
 pub fn create_app(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
@@ -54,8 +54,7 @@ pub fn create_app(state: Arc<AppState>) -> Router {
         .layer(general_limiter);
 
     Router::new()
-        .merge(SwaggerUi::new("/swagger-ui")
-            .url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(write_routes)
         .merge(read_routes)
         .layer(cors)
