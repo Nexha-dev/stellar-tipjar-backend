@@ -9,3 +9,4 @@ pub mod rate_limiter;
 pub mod request_id;
 pub mod timeout;
 pub mod tracing;
+pub mod tenant;
