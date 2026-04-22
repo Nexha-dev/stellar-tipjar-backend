@@ -24,6 +24,7 @@ mod email;
 mod errors;
 mod events;
 mod graphql;
+mod jobs;
 mod logging;
 mod metrics;
 mod middleware;
@@ -109,6 +110,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Start the real-time analytics pipeline as a background task.
     analytics::stream_processor::spawn(Arc::clone(&state));
+
+    // Start background job processing system
+    let (_job_queue, _job_scheduler) = jobs::start(Arc::clone(&state), jobs::JobConfig::default());
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])

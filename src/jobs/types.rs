@@ -10,6 +10,24 @@ pub type JobId = Uuid;
 /// Unique identifier for a worker
 pub type WorkerId = String;
 
+/// Database row representation of a job
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct JobRow {
+    pub id: Uuid,
+    pub job_type: String,
+    pub payload: serde_json::Value,
+    pub status: String,
+    pub retry_count: i32,
+    pub max_retries: i32,
+    pub created_at: DateTime<Utc>,
+    pub scheduled_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub error_message: Option<String>,
+    pub worker_id: Option<String>,
+    pub priority: Option<i32>,
+}
+
 /// Main job entity representing a background task
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
@@ -25,20 +43,61 @@ pub struct Job {
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
     pub worker_id: Option<WorkerId>,
+    pub priority: i32,
+}
+
+impl TryFrom<JobRow> for Job {
+    type Error = JobError;
+
+    fn try_from(row: JobRow) -> Result<Self, Self::Error> {
+        let job_type: JobType = serde_json::from_value(serde_json::Value::String(row.job_type))
+            .map_err(JobError::Serialization)?;
+        let payload: JobPayload =
+            serde_json::from_value(row.payload).map_err(JobError::Serialization)?;
+        let status: JobStatus = serde_json::from_value(serde_json::Value::String(row.status))
+            .map_err(JobError::Serialization)?;
+
+        Ok(Job {
+            id: row.id,
+            job_type,
+            payload,
+            status,
+            retry_count: row.retry_count,
+            max_retries: row.max_retries,
+            created_at: row.created_at,
+            scheduled_at: row.scheduled_at,
+            started_at: row.started_at,
+            completed_at: row.completed_at,
+            error_message: row.error_message,
+            worker_id: row.worker_id,
+            priority: row.priority.unwrap_or(0),
+        })
+    }
 }
 
 /// Types of jobs that can be processed
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq, Eq, Hash)]
-#[sqlx(type_name = "varchar", rename_all = "snake_case")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum JobType {
     VerifyTransaction,
     SendNotification,
     CleanupData,
+    AggregateStats,
+}
+
+impl std::fmt::Display for JobType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| format!("{:?}", self));
+        write!(f, "{}", s)
+    }
 }
 
 /// Current status of a job
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "varchar", rename_all = "snake_case")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     Pending,
     Running,
@@ -46,6 +105,16 @@ pub enum JobStatus {
     Failed,
     Retrying,
     Cancelled,
+}
+
+impl std::fmt::Display for JobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| format!("{:?}", self));
+        write!(f, "{}", s)
+    }
 }
 
 /// Type-safe job payloads for different job types
@@ -61,10 +130,16 @@ pub enum JobPayload {
         creator_id: Uuid,
         tip_id: Uuid,
         notification_type: NotificationType,
+        recipient_email: String,
     },
     CleanupData {
         cleanup_type: CleanupType,
         older_than: DateTime<Utc>,
+    },
+    AggregateStats {
+        creator_username: String,
+        period_start: DateTime<Utc>,
+        period_end: DateTime<Utc>,
     },
 }
 
@@ -103,6 +178,16 @@ impl Default for RetryPolicy {
             backoff_multiplier: 2.0,
             jitter: true,
         }
+    }
+}
+
+impl RetryPolicy {
+    /// Calculate the delay before the next retry attempt using exponential backoff
+    pub fn next_delay_secs(&self, attempt: i32) -> i64 {
+        let base = self.base_delay_ms as f64;
+        let delay = base * self.backoff_multiplier.powi(attempt);
+        let delay = delay.min(self.max_delay_ms as f64);
+        (delay / 1000.0).ceil() as i64
     }
 }
 
@@ -167,8 +252,8 @@ pub enum JobError {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("Job handler not found for type: {job_type:?}")]
-    HandlerNotFound { job_type: JobType },
+    #[error("Job handler not found for type: {job_type}")]
+    HandlerNotFound { job_type: String },
 
     #[error("Job execution failed: {message}")]
     ExecutionFailed { message: String },
@@ -182,6 +267,6 @@ pub enum JobError {
     #[error("Worker shutdown requested")]
     Shutdown,
 
-    #[error("Invalid job state transition from {from:?} to {to:?}")]
-    InvalidStateTransition { from: JobStatus, to: JobStatus },
+    #[error("Invalid job state transition from {from} to {to}")]
+    InvalidStateTransition { from: String, to: String },
 }
